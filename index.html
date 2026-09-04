@@ -4,20 +4,47 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="data:," />
-    <title>Colyseus</title>
+    <title>PartyUp Float · Local Authority Test</title>
     <style>
-      body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 848px; padding: 0 1rem; }
-      #status { font-weight: 600; }
-      #arena { position: relative; width: 800px; height: 600px; max-width: 100%; background: #1114; border-radius: .5rem; overflow: hidden; }
-      .player { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 4px; background: #4ea1ff; will-change: transform; }
-      .player.self { background: #ffd24e; }
+      :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background: #10121a; color: #eef0f7; }
+      body { margin: 0 auto; max-width: 1180px; padding: 24px; }
+      h1 { margin: 0; } h2 { margin: 0 0 8px; font-size: 18px; }
+      #status { color: #a9d5ff; font-weight: 650; }
+      .controls, .players { display: grid; gap: 16px; }
+      .controls { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 20px 0; }
+      .players { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      section { background: #191d29; border: 1px solid #30384d; border-radius: 12px; padding: 14px; }
+      button, select, input { background: #282f42; border: 1px solid #45516d; border-radius: 6px; color: inherit; padding: 7px 9px; margin: 3px 1px; }
+      button { cursor: pointer; } button:hover:not(:disabled) { border-color: #78baff; }
+      input { width: 48px; }
+      .board { position: relative; aspect-ratio: 3 / 5; max-height: 440px; margin: 12px auto; overflow: hidden; background: repeating-linear-gradient(0deg, #222839 0, #222839 calc(10% - 1px), #384158 10%), repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1px), #384158 16.666%); border: 2px solid #59647d; border-top-color: #f4989c; }
+      .balloon { position: absolute; width: 24px; height: 30px; padding: 0; margin: -15px 0 0 -12px; border: 0; border-radius: 50% 50% 46% 46%; background: #ffd15c; transform: translateZ(0); }
+      .balloon.speed { background: #65ddff; } .balloon.heavy { width: 34px; height: 40px; margin: -20px 0 0 -17px; background: #bd86ff; } .balloon.glued { outline: 3px solid #73e38b; }
+      .structures { min-height: 42px; color: #bec6d9; font-size: 13px; }
+      #log { min-height: 72px; max-height: 150px; overflow: auto; white-space: pre-wrap; color: #bdc7df; }
+      @media (max-width: 700px) { .players { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
-    <h1>Colyseus</h1>
+    <h1>PartyUp Float</h1>
     <p id="status">Connecting…</p>
-    <div id="arena"></div>
-    <p>Move with <kbd>WASD</kbd> or the arrow keys. Open a second tab to see another player.</p>
+    <div class="controls">
+      <section><h2>Match</h2><button id="ready">Ready</button>
+        <select id="balloon-type"><option>basic</option><option>speed</option><option>heavy</option></select>
+        <select id="lane"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+        <button id="send-balloon">Send balloon</button></section>
+      <section><h2>Build in your room</h2>
+        <select id="orientation"><option>vertical</option><option>horizontal</option></select>
+        <label>X <input id="grid-x" type="number" min="0" max="6" value="1" /></label>
+        <label>Y <input id="grid-y" type="number" min="0" max="10" value="5" /></label>
+        <button id="place-wall">Place wall</button></section>
+      <section><h2>Selected wall</h2><select id="wall-id"><option value="">No walls</option></select><br />
+        <button id="place-nails">+ Nails</button><button id="remove-nails">− Nails</button>
+        <button id="place-glue">+ Glue</button><button id="remove-glue">− Glue</button>
+        <button id="repair-wall">Repair</button><button id="remove-wall">Remove</button></section>
+    </div>
+    <div class="players"><section id="player-a"></section><section id="player-b"></section></div>
+    <h2>Server responses</h2><pre id="log"></pre>
     <p><a href="/playground">Playground</a> · <a href="/monitor">Monitor</a></p>
     <script type="module" src="/src/client/index.ts"></script>
   </body>

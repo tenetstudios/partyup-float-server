@@ -11,7 +11,7 @@ import {
 /**
  * Import your Room files
  */
-import { MyRoom } from "./rooms/MyRoom.js";
+import { FloatRoom } from "./rooms/FloatRoom.js";
 
 const server = defineServer({
 
@@ -19,7 +19,7 @@ const server = defineServer({
    * Define your room handlers:
    */
   rooms: {
-    my_room: defineRoom(MyRoom).enableRealtimeListing(),
+    float_room: defineRoom(FloatRoom).enableRealtimeListing(),
     lobby: defineRoom(LobbyRoom),
   },
 

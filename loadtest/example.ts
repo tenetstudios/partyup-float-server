@@ -4,21 +4,20 @@ import { cli, Options } from "@colyseus/loadtest";
 export async function main(options: Options) {
   const client = new Client(options.endpoint);
   const room: Room = await client.joinOrCreate(options.roomName, {
-    // your join options here...
   });
 
-  console.log("joined successfully!");
+  console.log("joined FloatRoom successfully");
 
-  room.onMessage("message-type", (payload: any) => {
-    // logic
+  room.onMessage("action_result", (payload: any) => {
+    console.log("action result:", payload);
   });
 
-  room.onStateChange((state: any) => {
-    console.log("state change:", state);
+  room.onStateChange.once(() => {
+    room.send("action", { type: "READY" });
   });
 
   room.onLeave((code: number) => {
-    console.log("left");
+    console.log("left", code);
   });
 }
 

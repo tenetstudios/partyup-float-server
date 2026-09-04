@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { colyseus } from "colyseus/vite";
 
 export default defineConfig(({ mode }) => ({
+  server: { port: 2567, strictPort: true },
   build: { outDir: "dist/client" },
   plugins: [
     // The plugin declares a second build environment (dist/server), so every
