@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { BASIC_BALLOON_COST, STARTING_COINS, createBalloon } from "@partyup/balloon-core";
+import { BASIC_BALLOON_COST, STARTING_COINS, createBalloon, createBalloonRoom, createWaveState } from "@partyup/balloon-core";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import type { Room as ClientRoom } from "@colyseus/sdk";
 
 import appConfig from "../src/app.config.js";
-import type { FloatRoom } from "../src/rooms/FloatRoom.js";
+import { advanceFloatMatchSimulation, FLOAT_TICK_RATE, type FloatMatchState, type FloatRoom } from "../src/rooms/FloatRoom.js";
 import type { FloatRoomState } from "../src/rooms/schema/FloatRoomState.js";
 
 describe("authoritative FloatRoom", () => {
@@ -77,6 +77,37 @@ describe("authoritative FloatRoom", () => {
     assert.equal(viewA.players.get("B")?.room.balloons.size, viewB.players.get("B")?.room.balloons.size);
   });
 
+  it("advances canonical milliseconds and room simulation seconds at 60 Hz", () => {
+    const roomA = createBalloonRoom("timestep:A");
+    const roomB = createBalloonRoom("timestep:B");
+    const balloon = createBalloon(roomA.id, "timestep-balloon", "basic", 1, "left", "wave", { roundId: 1, waveSequence: 1 });
+    balloon.currentCell = { column: 0, row: 0 };
+    balloon.targetCell = null;
+    balloon.y = 0.5;
+    roomA.balloons.push(balloon);
+
+    const match: FloatMatchState = {
+      matchId: "timestep",
+      players: {
+        A: { room: roomA, senderSequence: 0 },
+        B: { room: roomB, senderSequence: 0 },
+      },
+      simulationTimeMs: 0,
+      waveState: createWaveState(1),
+      status: "active",
+      result: null,
+    };
+    const deltaSeconds = 1 / FLOAT_TICK_RATE;
+    const deltaMs = 1000 / FLOAT_TICK_RATE;
+
+    for (let tick = 1; tick <= FLOAT_TICK_RATE; tick += 1) {
+      advanceFloatMatchSimulation(match, { dt: deltaSeconds, dtMs: deltaMs });
+    }
+
+    assert.ok(Math.abs(match.simulationTimeMs - 1000) < 0.000001);
+    assert.ok(Math.abs(balloon.y - (0.5 - balloon.speed)) < 0.000001);
+  });
+
   it("enforces room ownership for build, attachments, repair, and manual pops", async () => {
     const { room, clientA, clientB } = await activeMatch();
     const canonical = coreMatch(room);
@@ -140,5 +171,5 @@ async function queuedAction(room: FloatRoom, client: ClientRoom, action: object)
 }
 
 function coreMatch(room: FloatRoom) {
-  return (room as unknown as { match: NonNullable<unknown> }).match as import("@partyup/balloon-core").FloatMatchState;
+  return (room as unknown as { match: FloatMatchState }).match;
 }

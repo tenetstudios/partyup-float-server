@@ -1,13 +1,18 @@
 import {
-  applyFloatMatchAction,
-  createFloatMatch,
+  applyGameAction,
+  applyIncomeTicks,
+  applyLaunchQueue,
+  createBalloonRoom,
+  createSendBalloonAction,
+  createWaveState,
   createWallSegment,
-  updateFloatMatch,
+  updateRoomSimulation,
+  updateWaveState,
   type Balloon,
   type BalloonRoom,
   type BalloonType,
-  type FloatMatchAction,
-  type FloatMatchState,
+  type GameAction,
+  type WaveState,
   type GameActionResult,
   type GlueTrap,
   type NailStrip,
@@ -46,7 +51,17 @@ type ClientAction = {
 type PendingAction = {
   client: Client;
   slot: FloatSlot;
-  action: FloatMatchAction;
+  action: ServerAction;
+};
+
+type ServerAction = { actorPlayerId: FloatSlot; action: GameAction };
+export type FloatMatchState = {
+  matchId: string;
+  players: Record<FloatSlot, { room: BalloonRoom; senderSequence: number }>;
+  simulationTimeMs: number;
+  waveState: WaveState;
+  status: "active" | "complete";
+  result: { type: "win" | "draw"; winnerPlayerId: FloatSlot | "" } | null;
 };
 
 export class FloatRoom extends Room<{ state: FloatRoomState }> {
@@ -147,7 +162,17 @@ export class FloatRoom extends Room<{ state: FloatRoomState }> {
 
     if (this.state.players.size !== 2 || ![...this.state.players.values()].every((candidate) => candidate.ready)) return;
     const matchId = `float:${this.roomId}`;
-    this.match = createFloatMatch({ matchId, playerIds: ["A", "B"], seed: hashSeed(matchId) });
+    this.match = {
+      matchId,
+      players: {
+        A: { room: createBalloonRoom(`${matchId}:A`), senderSequence: 0 },
+        B: { room: createBalloonRoom(`${matchId}:B`), senderSequence: 0 },
+      },
+      simulationTimeMs: 0,
+      waveState: createWaveState(hashSeed(matchId)),
+      status: "active",
+      result: null,
+    };
     this.state.status = "ACTIVE";
     this.state.matchId = matchId;
     this.syncState();
@@ -158,30 +183,37 @@ export class FloatRoom extends Room<{ state: FloatRoomState }> {
     if (!this.match || this.state.status !== "ACTIVE") return;
 
     for (const pending of this.pendingActions.splice(0)) {
-      const result = applyFloatMatchAction(this.match, pending.action);
+      const sender = this.match.players[pending.slot];
+      const target = this.match.players[pending.slot === "A" ? "B" : "A"];
+      const result = this.isOwnedByAnotherPlayer(pending)
+        ? { action: pending.action.action.type, applied: false, code: "not_owner", message: "That item belongs to the other player" }
+        : applyGameAction(sender.room, pending.action.action, target.room);
       pending.client.send("action_result", result);
     }
-    updateFloatMatch(this.match, ctx.dt);
+    advanceFloatMatchSimulation(this.match, ctx);
+    this.completeMatchIfNeeded();
     this.state.serverTick = ctx.tick;
     this.syncState();
   }
 
-  private toCoreAction(slot: FloatSlot, payload: ClientAction): { value: FloatMatchAction } | { error: string } {
+  private toCoreAction(slot: FloatSlot, payload: ClientAction): { value: ServerAction } | { error: string } {
     const actorPlayerId = slot;
     switch (payload.type) {
       case "SEND_BALLOON": {
         if (!isBalloonType(payload.balloonType) || !isLane(payload.lane)) return { error: "SEND_BALLOON requires a valid balloonType and lane 1-4" };
         const targetPlayerId: FloatSlot = slot === "A" ? "B" : "A";
-        return { value: { type: "SEND_BALLOON", actorPlayerId, targetPlayerId, balloonType: payload.balloonType, lane: payload.lane, sentAt: this.match!.simulationTimeMs } };
+        const sender = this.match!.players[slot];
+        sender.senderSequence += 1;
+        return { value: { actorPlayerId, action: createSendBalloonAction({ balloonType: payload.balloonType, lane: payload.lane, targetRoomId: this.match!.players[targetPlayerId].room.id, matchId: this.match!.matchId, senderId: slot, senderSequence: sender.senderSequence, sentAt: this.match!.simulationTimeMs }) } };
       }
       case "MANUAL_POP":
         return typeof payload.balloonId === "string" && payload.balloonId
-          ? { value: { type: "POP_BALLOON", actorPlayerId, balloonId: payload.balloonId } }
+          ? { value: { actorPlayerId, action: { type: "POP_BALLOON", balloonId: payload.balloonId } } }
           : { error: "MANUAL_POP requires balloonId" };
       case "PLACE_WALL": {
         if (!isOrientation(payload.orientation) || !isInteger(payload.gridX) || !isInteger(payload.gridY)) return { error: "PLACE_WALL requires orientation, gridX, and gridY" };
         const roomId = this.match!.players[slot]!.room.id;
-        return { value: { type: "PLACE_WALL", actorPlayerId, wall: createWallSegment(roomId, payload.orientation, payload.gridX, payload.gridY) } };
+        return { value: { actorPlayerId, action: { type: "PLACE_WALL", wall: createWallSegment(roomId, payload.orientation, payload.gridX, payload.gridY) } } };
       }
       case "REMOVE_WALL":
       case "PLACE_NAILS":
@@ -190,7 +222,7 @@ export class FloatRoom extends Room<{ state: FloatRoomState }> {
       case "REMOVE_GLUE":
       case "REPAIR_WALL":
         return typeof payload.wallSegmentId === "string" && payload.wallSegmentId
-          ? { value: { type: payload.type, actorPlayerId, wallSegmentId: payload.wallSegmentId } }
+          ? { value: { actorPlayerId, action: { type: payload.type, wallSegmentId: payload.wallSegmentId } as GameAction } }
           : { error: `${payload.type} requires wallSegmentId` };
       default:
         return { error: `Unsupported action: ${String(payload.type)}` };
@@ -215,6 +247,25 @@ export class FloatRoom extends Room<{ state: FloatRoomState }> {
     }
   }
 
+  private completeMatchIfNeeded() {
+    if (!this.match || this.match.status === "complete") return;
+    const health = [this.match.players.A.room.health, this.match.players.B.room.health];
+    if (health[0] > 0 && health[1] > 0) return;
+    this.match.status = "complete";
+    this.match.result = health[0] <= 0 && health[1] <= 0
+      ? { type: "draw", winnerPlayerId: "" }
+      : { type: "win", winnerPlayerId: health[0] > 0 ? "A" : "B" };
+  }
+
+  private isOwnedByAnotherPlayer(pending: PendingAction) {
+    if (!this.match) return false;
+    const otherRoom = this.match.players[pending.slot === "A" ? "B" : "A"].room;
+    const action = pending.action.action;
+    if (action.type === "POP_BALLOON") return otherRoom.balloons.some((balloon) => balloon.id === action.balloonId);
+    if ("wallSegmentId" in action) return otherRoom.walls.some((wall) => wall.id === action.wallSegmentId);
+    return false;
+  }
+
   private playerFor(client: Client) {
     const slot = this.slotsBySession.get(client.sessionId);
     return slot ? this.state.players.get(slot) : undefined;
@@ -229,6 +280,20 @@ export class FloatRoom extends Room<{ state: FloatRoomState }> {
   private reject(client: Client, action: string, code: string, message: string) {
     client.send("action_result", { action, applied: false, code, message });
   }
+}
+
+export function advanceFloatMatchSimulation(
+  match: FloatMatchState,
+  { dt: deltaSeconds, dtMs: deltaMs }: Pick<StepContext, "dt" | "dtMs">,
+) {
+  match.simulationTimeMs += deltaMs;
+  for (const player of Object.values(match.players)) applyIncomeTicks(player.room, match.simulationTimeMs);
+  for (const slot of ["A", "B"] as const) {
+    const otherSlot = slot === "A" ? "B" : "A";
+    applyLaunchQueue(match.players[slot].room, match.players[otherSlot].room, match.simulationTimeMs);
+  }
+  updateWaveState(match.waveState, Object.values(match.players).map((player) => player.room), match.simulationTimeMs);
+  for (const player of Object.values(match.players)) updateRoomSimulation(player.room, deltaSeconds);
 }
 
 function emptyRoomState() {
