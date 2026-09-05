@@ -139,6 +139,11 @@ describe("authoritative FloatRoom", () => {
     const legalPop = await queuedAction(room, clientA, { type: "MANUAL_POP", balloonId: balloon.id, damage: 999 });
     assert.equal(legalPop.applied, true);
     assert.equal(balloon.health, balloon.maxHealth - 1);
+    for (let remainingHit = 1; remainingHit < balloon.maxHealth; remainingHit += 1) {
+      assert.equal((await queuedAction(room, clientA, { type: "MANUAL_POP", balloonId: balloon.id })).applied, true);
+    }
+    assert.equal(balloon.health, 0);
+    assert.equal(canonical.players.A.room.balloons.some((candidate) => candidate.id === balloon.id), false);
   });
 
   it("decides a same-tick double knockout as a server-side draw", async () => {

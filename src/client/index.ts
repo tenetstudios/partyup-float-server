@@ -70,12 +70,21 @@ function render(state: FloatRoomState) {
     const board = byId(`board-${slot.toLowerCase()}`);
     for (const balloon of gameRoom.balloons.values()) {
       const node = document.createElement("button");
+      const canManuallyPop = slot === ownSlot && state.status === "ACTIVE";
+      node.type = "button";
       node.className = `balloon ${balloon.balloonType}${balloon.glued ? " glued" : ""}`;
       node.style.left = `${balloon.x * 100}%`;
       node.style.top = `${balloon.y * 100}%`;
       node.title = `${balloon.balloonType} ${balloon.health}/${balloon.maxHealth} (${balloon.source})`;
-      node.disabled = slot !== ownSlot || state.status !== "ACTIVE";
-      node.onclick = () => roomSend({ type: "MANUAL_POP", balloonId: balloon.id });
+      node.disabled = !canManuallyPop;
+      if (canManuallyPop) {
+        node.addEventListener("pointerdown", (event) => {
+          if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          roomSend({ type: "MANUAL_POP", balloonId: balloon.id });
+        });
+      }
       board.appendChild(node);
     }
   }

@@ -19,6 +19,8 @@
       input { width: 48px; }
       .board { position: relative; aspect-ratio: 3 / 5; max-height: 440px; margin: 12px auto; overflow: hidden; background: repeating-linear-gradient(0deg, #222839 0, #222839 calc(10% - 1px), #384158 10%), repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1px), #384158 16.666%); border: 2px solid #59647d; border-top-color: #f4989c; }
       .balloon { position: absolute; width: 24px; height: 30px; padding: 0; margin: -15px 0 0 -12px; border: 0; border-radius: 50% 50% 46% 46%; background: #ffd15c; transform: translateZ(0); }
+      .balloon:not(:disabled) { cursor: crosshair; touch-action: manipulation; user-select: none; }
+      .balloon:disabled { cursor: default; opacity: 0.72; }
       .balloon.speed { background: #65ddff; } .balloon.heavy { width: 34px; height: 40px; margin: -20px 0 0 -17px; background: #bd86ff; } .balloon.glued { outline: 3px solid #73e38b; }
       .structures { min-height: 42px; color: #bec6d9; font-size: 13px; }
       #log { min-height: 72px; max-height: 150px; overflow: auto; white-space: pre-wrap; color: #bdc7df; }
